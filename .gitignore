@@ -5,4 +5,3 @@ build/
 # Manifestes propres à une infrastructure OpenShift donnée : non versionnés.
 # Les manifestes génériques sont dans kubernetes/.
 openshift/
-.github/

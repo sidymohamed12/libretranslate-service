@@ -1,0 +1,140 @@
+# Image multi-architecture (linux/amd64, linux/arm64, linux/s390x) publiée sur
+# Docker Hub. Secrets : DOCKERHUB_USERNAME, DOCKERHUB_TOKEN.
+#
+# Une machine par architecture, puis assemblage en un seul tag :
+# - amd64, arm64 : runners natifs, quelques minutes (wheel CTranslate2) ;
+# - s390x : émulation QEMU, plusieurs heures (CTranslate2 + numpy compilés).
+#   Un build natif sur une machine s390x est bien plus rapide (cf. README).
+name: Image multi-architecture
+
+on:
+  workflow_dispatch:
+  # Build de plusieurs heures : seulement à la demande ou sur un tag de version.
+  push:
+    tags: ["v*"]
+
+env:
+  IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/libretranslate-service
+  VERSION: "1.9.6"
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-24.04
+
+          - platform: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
+
+          - platform: linux/s390x
+            arch: s390x
+            runner: ubuntu-24.04
+
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurer QEMU
+        if: matrix.platform == 'linux/s390x'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: s390x
+
+      - name: Configurer Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Connexion à Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Chaque architecture publie son image par digest.
+      # Les tags finaux seront créés lors de l'assemblage.
+      - name: Construire et publier l'image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            MODELES=fr,en
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+
+      - name: Préparer le digest
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+
+      - name: Publier l'artefact du digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  assembler:
+    name: Assembler le manifeste multi-architecture
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Télécharger les digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - name: Configurer Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Connexion à Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Vérifier les digests
+        run: |
+          set -euo pipefail
+          count=$(find /tmp/digests -maxdepth 1 -type f | wc -l)
+          if [ "$count" -ne 3 ]; then
+            echo "Erreur : 3 digests attendus, $count trouvés."
+            exit 1
+          fi
+
+      - name: Créer le manifeste multi-architecture
+        working-directory: /tmp/digests
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          VERSION: ${{ env.VERSION }}
+        run: |
+          set -euo pipefail
+
+          docker buildx imagetools create \
+            -t "${IMAGE}:${VERSION}" \
+            -t "${IMAGE}:latest" \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+      - name: Vérifier le manifeste publié
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          VERSION: ${{ env.VERSION }}
+        run: |
+          docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+          docker buildx imagetools inspect "${IMAGE}:latest"
