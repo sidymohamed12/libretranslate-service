@@ -26,7 +26,8 @@
 #       -t <registre>/libretranslate-service:1.9.6 --push .           # image multi-architecture
 # ═══════════════════════════════════════════════════════════════════════
 
-ARG PYTHON_IMAGE=python:3.11.14-slim-bookworm
+# Nom complet : évite que Buildah/Podman (OpenShift) essaie d'abord les registres Red Hat.
+ARG PYTHON_IMAGE=docker.io/library/python:3.11.14-slim-bookworm
 
 # ── Étape 1 : compilation ───────────────────────────────────────────────
 FROM ${PYTHON_IMAGE} AS builder
@@ -41,15 +42,23 @@ ARG CTRANSLATE2_SOURCE=auto
 ARG CTRANSLATE2_WITH_RUY=OFF
 
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update -qq \
+# Réseau lent ou instable : délais et nouvelles tentatives plus généreux.
+ENV PIP_DEFAULT_TIMEOUT=300 \
+    PIP_RETRIES=10 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN printf 'Acquire::Retries "10";\nAcquire::http::Timeout "300";\n' > /etc/apt/apt.conf.d/80reseau-lent \
+    && apt-get update -qq \
     && apt-get install -qq -y --no-install-recommends \
     build-essential cmake git pkg-config ca-certificates libopenblas-dev \
     libxml2-dev libxslt1-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # LibreTranslate, à l'emplacement attendu par son entrypoint (/app, venv dans /app/venv)
-RUN git clone --depth 1 --branch "${LIBRETRANSLATE_VERSION}" \
-    https://github.com/LibreTranslate/LibreTranslate.git /app
+RUN for essai in 1 2 3 4 5; do \
+    git clone --depth 1 --branch "${LIBRETRANSLATE_VERSION}" \
+    https://github.com/LibreTranslate/LibreTranslate.git /app && break; \
+    rm -rf /app; echo "échec ($essai/5), nouvel essai dans 30 s"; sleep 30; \
+    done; test -f /app/VERSION
 WORKDIR /app
 RUN python -m venv venv && ./venv/bin/pip install --no-cache-dir --upgrade pip
 
@@ -61,7 +70,10 @@ RUN ./venv/bin/pip install --no-cache-dir "numpy<2"
 # - x86_64, aarch64 : wheel officielle (MKL/oneDNN sur x86, Ruy sur ARM : int8, rapide) ;
 # - autres (s390x, ppc64le…) : compilé depuis les sources avec OpenBLAS.
 # Forcer avec --build-arg CTRANSLATE2_SOURCE=wheel ou =source.
+# Compilation : seuls les sous-modules utiles au CPU sont clonés (spdlog, ruy si
+# demandé, cpu_features sur x86) — jamais cutlass/thrust, propres au GPU et très lourds.
 RUN set -eux; \
+    reessayer() { for essai in 1 2 3 4 5; do "$@" && return 0; echo "échec ($essai/5), nouvel essai dans 30 s"; sleep 30; done; return 1; }; \
     arch="$(uname -m)"; mode="${CTRANSLATE2_SOURCE}"; \
     if [ "$mode" = auto ]; then \
     case "$arch" in x86_64|aarch64) mode=wheel ;; *) mode=source ;; esac; \
@@ -71,8 +83,12 @@ RUN set -eux; \
     ./venv/bin/pip install --no-cache-dir "ctranslate2==${CTRANSLATE2_VERSION#v}"; \
     else \
     case "$arch" in x86_64|aarch64) dispatch=ON ;; *) dispatch=OFF ;; esac; \
-    git clone --depth 1 --branch "${CTRANSLATE2_VERSION}" --recurse-submodules --shallow-submodules \
+    reessayer git clone --depth 1 --branch "${CTRANSLATE2_VERSION}" \
     https://github.com/OpenNMT/CTranslate2.git /src/ctranslate2; \
+    modules="third_party/spdlog"; \
+    [ "${CTRANSLATE2_WITH_RUY}" = ON ] && modules="$modules third_party/ruy"; \
+    [ "$arch" = x86_64 ] && modules="$modules third_party/cpu_features"; \
+    reessayer git -C /src/ctranslate2 submodule update --init --depth 1 $modules; \
     cmake -S /src/ctranslate2 -B /src/ctranslate2/build \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/opt/ctranslate2 \
