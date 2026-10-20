@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+# Remplace PyMuPDF dans l'image s390x de LibreTranslate. PyMuPDF ne sert qu'à
+# la traduction de fichiers PDF (désactivée : LT_DISABLE_FILES_TRANSLATION),
+# mais argostranslatefiles l'importe au chargement ; or PyMuPDF 2.x n'a pas de
+# wheel s390x et dépend d'onnxruntime (introuvable sur s390x). Version ≥ 1.24.11
+# pour satisfaire argos-translate-files. Cf. ../README.md.
+[project]
+name = "PyMuPDF"
+version = "1.26.0"
+description = "Module pymupdf vide : traduction de fichiers PDF désactivée (LibreTranslate sur s390x)"
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools]
+packages = ["pymupdf"]

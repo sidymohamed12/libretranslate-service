@@ -1,0 +1,10 @@
+**/__pycache__
+**/*.egg-info
+**/build
+openshift
+*.md
+*.yml
+.github
+.git
+docker-compose.yml
+kubernetes

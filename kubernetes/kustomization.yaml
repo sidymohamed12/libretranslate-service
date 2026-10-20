@@ -1,0 +1,17 @@
+# 1. Indiquer votre image ci-dessous (images:), publiée par
+#    .github/workflows/image.yml ou construite avec :
+#      docker buildx build --platform linux/amd64,linux/arm64,linux/s390x \
+#        -t <registre>/libretranslate-service:1.9.6 --push .
+# 2. kubectl apply -k kubernetes/ -n <namespace>
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+
+images:
+  - name: libretranslate-service
+    newName: docker.io/<compte>/libretranslate-service   # À ADAPTER
+    newTag: "1.9.6"

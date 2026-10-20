@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+# Remplace le paquet PyPI « minisbd » (découpage en phrases par un modèle ONNX)
+# dans l'image s390x de LibreTranslate : onnxruntime n'est pas publié pour
+# s390x, et son build depuis les sources est très long. Même nom et même
+# version que la dépendance figée de LibreTranslate (minisbd==0.9.5), pour que
+# pip la considère satisfaite. Cf. ../README.md.
+[project]
+name = "minisbd"
+version = "0.9.5"
+description = "Découpage en phrases par expressions régulières, API compatible minisbd (LibreTranslate sur s390x)"
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools]
+packages = ["minisbd"]

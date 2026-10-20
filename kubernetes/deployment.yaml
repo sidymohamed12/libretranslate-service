@@ -1,0 +1,94 @@
+# LibreTranslate, service interne au namespace (aucun Ingress) :
+# joignable à http://libretranslate:5000 par les pods autorisés (networkpolicy.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: libretranslate
+  labels:
+    app.kubernetes.io/name: libretranslate
+    app.kubernetes.io/component: traduction
+spec:
+  # Une seule réplique suffit si l'application appelante met les traductions
+  # en cache plutôt que de rappeler LibreTranslate à chaque lecture.
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: libretranslate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: libretranslate
+        app.kubernetes.io/component: traduction
+    spec:
+      # Image multi-architecture (amd64, arm64, s390x) : le nœud tire la
+      # variante de son architecture. Pour imposer une architecture, ou si
+      # l'image n'a été construite que pour l'une d'elles, ajouter par exemple :
+      #   kubernetes.io/arch: s390x
+      nodeSelector:
+        kubernetes.io/os: linux
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1032
+        runAsGroup: 1032
+        fsGroup: 1032
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: libretranslate
+          # Nom et tag réels fixés dans kustomization.yaml (images:).
+          image: libretranslate-service
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: libretranslate
+          resources:
+            requests:
+              cpu: "1"
+              # Par processus gunicorn (LT_THREADS) : ~400 Mo sur s390x (float32),
+              # moins sur amd64/arm64 (int8).
+              memory: 1536Mi
+            limits:
+              cpu: "4"
+              memory: 3Gi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 4
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Clés d'API et métriques de LibreTranslate ; les modèles sont dans l'image.
+            - name: db
+              mountPath: /app/db
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: db
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

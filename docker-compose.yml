@@ -1,0 +1,74 @@
+# LibreTranslate en local, pour tester avant le déploiement sur le cluster.
+#
+#   # A. Image officielle (amd64/arm64) — le plus rapide pour tester une application cliente
+#   docker compose --profile officiel up -d
+#
+#   # B. Image de ce dépôt (celle du cluster), construite pour votre
+#   #    machine : valide le Dockerfile, les remplaçants minisbd / PyMuPDF et le
+#   #    test de fumée fr→en. Quelques minutes sur amd64/arm64 (wheel CTranslate2).
+#   docker compose --profile maison up -d --build
+#
+# Back de CETUD Mobilités, par exemple :
+#   TRADUCTION_ACTIF=true TRADUCTION_BASE_URL=http://localhost:5000
+#
+# Les deux profils écoutent sur le port 5000 : n'en lancer qu'un à la fois.
+
+name: libretranslate-service
+
+x-libretranslate-env: &libretranslate-env
+  LT_LOAD_ONLY: fr,en
+  LT_UPDATE_MODELS: "false"
+  LT_DISABLE_FILES_TRANSLATION: "true"
+  # Interface web laissée active en local : http://localhost:5000 pour essayer à la main.
+  LT_DISABLE_WEB_UI: "false"
+  # Mêmes limites que dans kubernetes/configmap.yaml.
+  LT_CHAR_LIMIT: "5000"
+  LT_BATCH_LIMIT: "16"
+  LT_THREADS: "2"
+  LT_TIMEOUT: "120"
+
+x-healthcheck: &healthcheck
+  test: ["CMD", "./venv/bin/python", "scripts/healthcheck.py"]
+  interval: 15s
+  timeout: 10s
+  retries: 5
+  # Premier démarrage de l'image officielle : téléchargement des modèles fr/en.
+  start_period: 180s
+
+services:
+  # ── A. Image officielle ───────────────────────────────────────────────
+  libretranslate-officiel:
+    profiles: ["officiel"]
+    image: libretranslate/libretranslate:v1.9.6
+    container_name: libretranslate
+    ports:
+      - "5000:5000"
+    environment: *libretranslate-env
+    volumes:
+      # Les modèles téléchargés au premier lancement sont conservés.
+      - modeles:/home/libretranslate/.local
+    healthcheck: *healthcheck
+    restart: unless-stopped
+
+  # ── B. Image maison (Dockerfile de ce dossier) ────────────────────────
+  libretranslate-maison:
+    profiles: ["maison"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODELES: fr,en
+    image: libretranslate-service:1.9.6-local
+    container_name: libretranslate
+    ports:
+      - "5000:5000"
+    environment: *libretranslate-env
+    # Modèles inclus dans l'image : aucun volume, comme sur le cluster.
+    tmpfs:
+      - /app/db
+      - /tmp
+    healthcheck: *healthcheck
+    restart: unless-stopped
+
+volumes:
+  modeles:

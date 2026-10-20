@@ -1,0 +1,24 @@
+# Seuls les pods portant le label ci-dessous peuvent joindre LibreTranslate.
+# Ajouter ce label aux pods de l'application qui l'appelle, ou remplacer le
+# sélecteur par ses labels existants (kubectl get pods --show-labels).
+# Sans effet si le plugin réseau du cluster n'applique pas les NetworkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: libretranslate
+  labels:
+    app.kubernetes.io/name: libretranslate
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: libretranslate
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              libretranslate-client: "true"   # À ADAPTER
+      ports:
+        - protocol: TCP
+          port: 5000

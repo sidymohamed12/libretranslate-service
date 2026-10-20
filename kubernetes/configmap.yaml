@@ -1,0 +1,28 @@
+# Configuration de LibreTranslate (variables LT_* / ARGOS_*).
+# Référence : https://github.com/LibreTranslate/LibreTranslate#configuration-parameters
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: libretranslate
+  labels:
+    app.kubernetes.io/name: libretranslate
+data:
+  # Langues chargées : doivent faire partie de celles incluses dans l'image (argument MODELES).
+  LT_LOAD_ONLY: "fr,en"
+  # Aucun téléchargement au démarrage : les modèles sont dans l'image.
+  LT_UPDATE_MODELS: "false"
+  LT_DISABLE_WEB_UI: "true"
+  # Obligatoire avec cette image : la traduction de fichiers (PDF…) n'y est pas incluse.
+  LT_DISABLE_FILES_TRANSLATION: "true"
+  # Taille max d'un texte, nombre max de textes par requête.
+  LT_CHAR_LIMIT: "5000"
+  LT_BATCH_LIMIT: "16"
+  # Processus gunicorn ; chacun charge son modèle.
+  LT_THREADS: "2"
+  # Délai max d'une requête, en secondes.
+  LT_TIMEOUT: "120"
+  # Fils de calcul CTranslate2 par traduction.
+  ARGOS_INTRA_THREADS: "2"
+  # Clé d'API : décommenter, puis créer une clé avec « ./venv/bin/ltmanage keys add » dans le pod
+  # (base dans /app/db : prévoir un PersistentVolumeClaim à la place de l'emptyDir).
+  # LT_API_KEYS: "true"
