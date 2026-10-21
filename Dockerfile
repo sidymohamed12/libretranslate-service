@@ -128,6 +128,12 @@ RUN apt-get update -qq \
     && apt-get install -qq -y --no-install-recommends zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Le module Python ctranslate2 charge libctranslate2.so.4 installée dans
+# /opt/ctranslate2/lib (hors des chemins par défaut du chargeur dynamique) :
+# sans cela, l'import de la vérification ci-dessous échoue pendant le build.
+# (L'image d'exécution fait la même chose via ldconfig, plus bas.)
+RUN echo /opt/ctranslate2/lib > /etc/ld.so.conf.d/ctranslate2.conf && ldconfig
+
 # LibreTranslate lui-même (mêmes commandes que son Dockerfile officiel)
 RUN ./venv/bin/pip install --no-cache-dir Babel==2.12.1 \
     && ./venv/bin/python scripts/compile_locales.py \
