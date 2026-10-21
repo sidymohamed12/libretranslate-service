@@ -115,6 +115,13 @@ COPY minisbd-regex /src/minisbd-regex
 COPY pymupdf-desactive /src/pymupdf-desactive
 RUN ./venv/bin/pip install --no-cache-dir /src/minisbd-regex /src/pymupdf-desactive
 
+# lxml n'a pas de wheel s390x : il est compilé et a besoin de zlib (-lz).
+# Couche volontairement placée ici, après la compilation de CTranslate2, pour
+# ne pas invalider son cache (plusieurs heures sous QEMU).
+RUN apt-get update -qq \
+    && apt-get install -qq -y --no-install-recommends zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # LibreTranslate lui-même (mêmes commandes que son Dockerfile officiel)
 RUN ./venv/bin/pip install --no-cache-dir Babel==2.12.1 \
     && ./venv/bin/python scripts/compile_locales.py \
@@ -141,7 +148,8 @@ RUN echo /opt/ctranslate2/lib > /etc/ld.so.conf.d/ctranslate2.conf && ldconfig
 ENV HOME=/home/libretranslate
 RUN addgroup --system --gid 1032 libretranslate \
     && adduser --system --uid 1032 --gid 1032 --home /home/libretranslate libretranslate \
-    && mkdir -p /home/libretranslate/.local
+    && mkdir -p /home/libretranslate/.local/share \
+    && chown -R 1032:0 /home/libretranslate
 
 COPY --from=builder --chown=1032:0 /app /app
 COPY --chown=1032:0 scripts/ct2_big_endian.py /usr/local/bin/ct2_big_endian.py
