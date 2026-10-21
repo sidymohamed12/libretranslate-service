@@ -139,6 +139,7 @@ RUN ./venv/bin/pip install --no-cache-dir Babel==2.12.1 \
     && ./venv/bin/python scripts/compile_locales.py \
     && ./venv/bin/pip install --no-cache-dir gunicorn==23.0.0 \
     && ./venv/bin/pip install --no-cache-dir . \
+    && ./venv/bin/pip uninstall -y wheel pybind11 \
     && ./venv/bin/pip check \
     && ! ./venv/bin/pip show onnxruntime >/dev/null 2>&1 \
     && ./venv/bin/python -c "import ctranslate2, minisbd, argostranslate.translate; print('ctranslate2', ctranslate2.__version__)"
