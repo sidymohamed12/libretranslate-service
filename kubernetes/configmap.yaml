@@ -19,8 +19,11 @@ data:
   LT_BATCH_LIMIT: "16"
   # Processus gunicorn ; chacun charge son modèle.
   LT_THREADS: "2"
-  # Délai max d'une requête, en secondes.
-  LT_TIMEOUT: "120"
+  # Délai max d'une requête, en secondes (1er chargement du modèle : plusieurs minutes sur s390x).
+  LT_TIMEOUT: "600"
+  # Plusieurs fils par processus : /health reste servi pendant une traduction,
+  # sans dupliquer le modèle en mémoire (worker gunicorn « gthread »).
+  GUNICORN_CMD_ARGS: "--threads 4"
   # Fils de calcul CTranslate2 par traduction.
   ARGOS_INTRA_THREADS: "2"
   # Clé d'API : décommenter, puis créer une clé avec « ./venv/bin/ltmanage keys add » dans le pod

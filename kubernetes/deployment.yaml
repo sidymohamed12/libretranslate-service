@@ -69,10 +69,13 @@ spec:
               path: /health
               port: http
             periodSeconds: 15
-            timeoutSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 4
+          # Vie = le serveur accepte les connexions (TCP), pas /health : une
+          # traduction longue (1er chargement du modèle, plusieurs minutes sur
+          # s390x) ne doit pas faire tuer le pod.
           livenessProbe:
-            httpGet:
-              path: /health
+            tcpSocket:
               port: http
             periodSeconds: 30
             timeoutSeconds: 10
