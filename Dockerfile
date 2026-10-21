@@ -73,6 +73,8 @@ RUN ./venv/bin/pip install --no-cache-dir "numpy<2"
 # - x86_64, aarch64 : wheel officielle (MKL/oneDNN sur x86, Ruy sur ARM : int8, rapide) ;
 # - autres (s390x, ppc64le…) : compilé depuis les sources avec OpenBLAS.
 # Forcer avec --build-arg CTRANSLATE2_SOURCE=wheel ou =source.
+# Après compilation, les outils de build (wheel, pybind11) sont retirés : wheel exige
+# packaging>=24, incompatible avec packaging==23.1 figé par LibreTranslate (pip check).
 # Compilation : seuls les sous-modules utiles au CPU sont clonés (spdlog, ruy si
 # demandé, cpu_features sur x86) — jamais cutlass/thrust, propres au GPU et très lourds.
 RUN set -eux; \
@@ -107,6 +109,7 @@ RUN set -eux; \
     cd /src/ctranslate2/python; \
     /app/venv/bin/pip install --no-cache-dir -r install_requirements.txt; \
     CTRANSLATE2_ROOT=/opt/ctranslate2 /app/venv/bin/pip install --no-cache-dir --no-build-isolation .; \
+    /app/venv/bin/pip uninstall -y wheel pybind11; \
     fi; \
     echo "ctranslate2 ${CTRANSLATE2_VERSION} : $mode ($arch)" | tee /opt/ctranslate2/PROVENANCE
 
