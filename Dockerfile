@@ -40,6 +40,9 @@ ARG CTRANSLATE2_SOURCE=auto
 # Compilation seulement : Ruy apporte les calculs int8 (plus rapides, moins de
 # mémoire) mais n'est pas validé sur s390x — désactivé, float32 par défaut.
 ARG CTRANSLATE2_WITH_RUY=OFF
+# Compilations C++ en parallèle : chacune prend ~0,5-1 Go de mémoire. Peu de
+# tâches = build plus long, mais pas de pic de mémoire qui ferait évincer le pod.
+ARG COMPILATION_TACHES=2
 
 ARG DEBIAN_FRONTEND=noninteractive
 # Réseau lent ou instable : délais et nouvelles tentatives plus généreux.
@@ -99,7 +102,7 @@ RUN set -eux; \
     -DOPENMP_RUNTIME=COMP \
     -DENABLE_CPU_DISPATCH="$dispatch" \
     -DBUILD_CLI=OFF; \
-    cmake --build /src/ctranslate2/build --parallel "$(nproc)"; \
+    cmake --build /src/ctranslate2/build --parallel "${COMPILATION_TACHES}"; \
     cmake --install /src/ctranslate2/build; \
     cd /src/ctranslate2/python; \
     /app/venv/bin/pip install --no-cache-dir -r install_requirements.txt; \
@@ -153,6 +156,7 @@ RUN addgroup --system --gid 1032 libretranslate \
 
 COPY --from=builder --chown=1032:0 /app /app
 COPY --chown=1032:0 scripts/ct2_big_endian.py /usr/local/bin/ct2_big_endian.py
+COPY --chown=1032:0 scripts/test_fumee.py /usr/local/bin/test_fumee.py
 WORKDIR /app
 
 USER 1032
@@ -164,11 +168,7 @@ RUN ./venv/bin/python scripts/install_models.py --load_only_lang_codes "${MODELE
 
 # Test de fumée sur l'architecture cible : un modèle mal converti ou un calcul
 # faux (boutisme, OpenBLAS) fait échouer le build plutôt que la production.
-RUN ./venv/bin/python -c "\
-    import argostranslate.translate as t; \
-    r = t.translate('Bonjour. La nouvelle ligne de bus ouvre lundi.', 'fr', 'en'); \
-    print('fr→en :', r); \
-    assert 'bus' in r.lower() and ('monday' in r.lower() or 'opens' in r.lower()), r"
+RUN ./venv/bin/python /usr/local/bin/test_fumee.py
 
 # OpenShift lance les pods avec un UID arbitraire du groupe 0 (Kubernetes
 # avec l'UID 1032, cf. kubernetes/deployment.yaml) : HOME, /app/db
